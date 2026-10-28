@@ -8,10 +8,12 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
+import json
 import pandas as pd
 import streamlit as st
 
 from dashboard.runtime import get_runtime
+from ml.video_inspector import ClassicalMLVideoInspector, run_comparative_video_study
 
 # Page Configuration
 st.set_page_config(
@@ -227,14 +229,191 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─────────────────── Main Tabs ───────────────────────────────────────────────
-tab_live, tab_eval, tab_history, tab_sessions = st.tabs([
-    "📹 Live Camera & Alerts",
+tab_video_ml, tab_live, tab_eval, tab_history, tab_sessions = st.tabs([
+    "🎞️ Upload Video (Classical ML Study)",
+    "📹 Live Camera & YOLO Pipeline",
     "📊 Model Evaluation & Benchmarks",
     "📸 Defect Snapshots & Event Log",
     "📁 Session Records & Export"
 ])
 
-# ─────────────────── Tab 1: Live Camera & Alerts ─────────────────────────────
+# ─────────────────── Tab 1: Upload Video (Classical ML Study) ────────────────
+with tab_video_ml:
+    st.markdown("""
+    <div style="background: rgba(22, 27, 34, 0.7); border: 1px solid #30363d; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: #58a6ff;">🎞️ Offline Video Inspection & Classical ML Comparative Study</h3>
+        <p style="margin: 6px 0 0 0; color: #8b949e; font-size: 14px;">
+            Inspect recorded fabric videos (simulating line-scan camera / panning fabric). Uses <strong>handcrafted feature descriptors (GLCM texture, LBP, HOG edges, statistical moments)</strong> 
+            and <strong>3 Classical Machine Learning models (Random Forest, SVM, Gradient Boosting)</strong> with automated multi-frame defect tracking.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_v1, col_v2 = st.columns([1, 1], gap="large")
+
+    with col_v1:
+        st.markdown("#### 1. Select Video Input")
+        video_source_type = st.radio(
+            "Video Source:",
+            options=["Built-in Moving Fabric Scan (Demo)", "Upload New Fabric Video (.mp4, .avi, .mov)"],
+            horizontal=True
+        )
+
+        video_file_path = None
+        if video_source_type == "Built-in Moving Fabric Scan (Demo)":
+            demo_path = Path("data/fabric_moving_scan.mp4")
+            if not demo_path.exists():
+                from ml.create_demo_video import generate_panning_fabric_video
+                generate_panning_fabric_video()
+            video_file_path = str(demo_path)
+            st.info(f"Loaded demo video: `{demo_path}` (Line-scan panning weave with hole, stain, and thread anomalies)")
+        else:
+            uploaded_video = st.file_uploader("Upload Fabric Video", type=["mp4", "avi", "mov", "mkv"])
+            if uploaded_video is not None:
+                temp_dir = Path("logs/uploaded_videos")
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                video_file_path = str(temp_dir / uploaded_video.name)
+                with open(video_file_path, "wb") as f:
+                    f.write(uploaded_video.read())
+                st.success(f"Video uploaded: `{uploaded_video.name}` ({uploaded_video.size / 1024 / 1024:.2f} MB)")
+
+    with col_v2:
+        st.markdown("#### 2. Model & Inspection Settings")
+        ml_model_choice = st.selectbox(
+            "Classical Machine Learning Model:",
+            options=[
+                "🏆 Comparative Study (Run All 3 Models Side-by-Side)",
+                "Random Forest (Ensemble Trees)",
+                "Support Vector Machine (SVM - RBF Kernel)",
+                "Gradient Boosting (HistGBM)"
+            ],
+            index=0
+        )
+        conf_sens = st.slider("Detection Sensitivity (Confidence Threshold)", min_value=0.20, max_value=0.80, value=0.35, step=0.05,
+                              help="Lower threshold detects subtle / faint anomalies; higher threshold requires strong defect contrast.")
+        
+        run_inspection_btn = st.button("🚀 Run Video Inspection", use_container_width=True, type="primary")
+
+    if run_inspection_btn:
+        if not video_file_path or not Path(video_file_path).exists():
+            st.error("Please provide or upload a valid video file first.")
+        else:
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def update_progress(pct, msg):
+                progress_bar.progress(pct)
+                status_text.text(msg)
+
+            if "Comparative Study" in ml_model_choice:
+                status_text.text("Running Comparative Study across Random Forest, SVM, and Gradient Boosting...")
+                comp_res = run_comparative_video_study(video_file_path, conf_threshold=conf_sens, progress_cb=update_progress)
+                progress_bar.progress(1.0)
+                status_text.success("Comparative Study Finished Successfully!")
+
+                st.markdown("---")
+                st.markdown("### 🏆 Comparative Study Results (Across 3 Classical ML Models)")
+                
+                comp_df = comp_res["comparative_df"]
+                st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+                # Charts
+                ch_col1, ch_col2 = st.columns(2)
+                with ch_col1:
+                    st.markdown("##### ⚡ Processing Throughput (FPS)")
+                    st.bar_chart(comp_df.set_index("ML Model")["Processing Speed (FPS)"])
+                with ch_col2:
+                    st.markdown("##### 🔍 Total Defects Detected")
+                    st.bar_chart(comp_df.set_index("ML Model")["Total Defects Found"])
+
+                # Offline Benchmark Metrics
+                metrics_json_path = Path("models/ml_comparison_metrics.json")
+                if metrics_json_path.exists():
+                    st.markdown("##### 📋 Offline Validation Metrics (Held-out Test Dataset)")
+                    with open(metrics_json_path) as mf:
+                        m_data = json.load(mf)
+                    b_rows = []
+                    for m_k, m_v in m_data.items():
+                        b_rows.append({
+                            "Model": m_k,
+                            "Accuracy": f"{m_v['accuracy']*100:.2f}%",
+                            "Macro F1": f"{m_v['macro_f1']:.4f}",
+                            "Precision": f"{m_v['precision']:.4f}",
+                            "Recall": f"{m_v['recall']:.4f}",
+                            "Latency (ms/patch)": f"{m_v['inference_ms_per_patch']:.3f} ms",
+                            "Model Size": f"{m_v['model_size_kb']:.1f} KB"
+                        })
+                    st.dataframe(pd.DataFrame(b_rows), use_container_width=True, hide_index=True)
+
+                # Video playback with model selector
+                st.markdown("#### 🎬 Annotated Inspection Video")
+                view_col1, _ = st.columns([2, 2])
+                with view_col1:
+                    vid_model = st.selectbox(
+                        "Choose Annotated Model Video to Play:",
+                        ["Random Forest", "Support Vector Machine (SVM)", "Gradient Boosting (HistGBM)"]
+                    )
+                sel_model_res = comp_res["model_results"].get(vid_model, top_model_res)
+                out_vid = sel_model_res.get("output_video_path")
+                if out_vid and Path(out_vid).exists():
+                    try:
+                        with open(out_vid, "rb") as vf:
+                            st.video(vf.read(), format="video/mp4")
+                    except Exception:
+                        st.video(out_vid)
+
+                st.markdown("#### 📝 Tracked Defect Events Timeline")
+                ev_df = sel_model_res["events_df"]
+                if not ev_df.empty:
+                    st.dataframe(ev_df.drop(columns=["Snapshot"], errors="ignore"), use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"No persistent defects flagged by {vid_model} in this video clip.")
+
+            else:
+                # Single Model Run
+                cleaned_name = ml_model_choice.split(" (")[0]
+                status_text.text(f"Running inspection with {cleaned_name}...")
+                inspector = ClassicalMLVideoInspector(model_name=cleaned_name)
+                out_vid = f"logs/annotated_single_{cleaned_name.replace(' ', '_').lower()}.mp4"
+                res = inspector.inspect_video(
+                    video_path=video_file_path,
+                    output_video_path=out_vid,
+                    conf_threshold=conf_sens,
+                    progress_cb=update_progress
+                )
+                progress_bar.progress(1.0)
+                status_text.success(f"{cleaned_name} Inspection Completed!")
+
+                st.markdown("---")
+                st.markdown(f"### 📊 Inspection Summary: {cleaned_name}")
+                s = res["stats"]
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total Defects", s["total_unique_defects"])
+                m2.metric("Processing Speed", f"{s['processing_fps']:.1f} FPS")
+                m3.metric("Avg Latency", f"{s['average_ms_per_frame']:.1f} ms")
+                m4.metric("Video Duration", f"{s['video_duration_sec']} s")
+
+                # Video display
+                if out_vid and Path(out_vid).exists():
+                    st.markdown("#### 🎬 Annotated Output Video")
+                    try:
+                        with open(out_vid, "rb") as vf:
+                            st.video(vf.read(), format="video/mp4")
+                    except Exception:
+                        st.video(out_vid)
+
+                # Defect Events
+                st.markdown("#### 📝 Detected Defect Events")
+                ev_df = res["events_df"]
+                if not ev_df.empty:
+                    st.dataframe(ev_df.drop(columns=["Snapshot"], errors="ignore"), use_container_width=True, hide_index=True)
+                    csv_data = ev_df.to_csv(index=False).encode("utf-8")
+                    st.download_button("📥 Download Defect Report (CSV)", csv_data, f"defect_report_{cleaned_name}.csv", "text/csv")
+                else:
+                    st.info("No defects detected above the threshold.")
+
+# ─────────────────── Tab 2: Live Camera & YOLO Pipeline ──────────────────────
 with tab_live:
     # Fragment to auto-refresh live camera feed and alerts smoothly
     @st.fragment(run_every="0.25s")

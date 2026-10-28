@@ -32,6 +32,8 @@ runs/
 # Keep only designated production models in models/
 !models/fabric_classifier_best.pt
 !models/yolo11n_classifier_best.pt
+!models/ml_*.joblib
+!models/ml_comparison_metrics.json
 
 # --- Runtime Logs, DBs & Snapshots ---
 logs/snapshots/

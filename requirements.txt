@@ -7,3 +7,4 @@ pandas
 pyyaml
 streamlit
 psutil
+scikit-image
