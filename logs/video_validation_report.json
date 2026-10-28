@@ -1,0 +1,279 @@
+{
+  "video": "logs/uploaded_videos/WhatsApp Video 2026-10-28 at 20.32.15.mp4",
+  "confidence_threshold": 0.35,
+  "models": {
+    "Random Forest": {
+      "stats": {
+        "model_name": "Random Forest",
+        "total_frames": 695,
+        "video_duration_sec": 23.17,
+        "video_fps": 30.0,
+        "processing_time_sec": 6.62,
+        "processing_fps": 105.0,
+        "average_ms_per_frame": 9.5,
+        "total_candidate_inferences": 422,
+        "frames_with_defect": 348,
+        "total_unique_defects": 5,
+        "defect_counts": {
+          "broken_thread": 0,
+          "hole": 2,
+          "irregular_yarn": 0,
+          "stain": 3
+        },
+        "output_video_path": "logs/annotated_random_forest.mp4"
+      },
+      "events_count": 5,
+      "events": [
+        {
+          "event_id": 1,
+          "track_id": 1,
+          "class": "hole",
+          "confidence": 0.7533,
+          "bbox": [
+            210,
+            374,
+            273,
+            426
+          ],
+          "first_frame": 0,
+          "last_frame": 144,
+          "first_seen": "2026-10-29T00:39:50",
+          "last_seen": "2026-10-29T00:39:51",
+          "frames_seen": 73,
+          "snapshot": null
+        },
+        {
+          "event_id": 2,
+          "track_id": 2,
+          "class": "stain",
+          "confidence": 1.0,
+          "bbox": [
+            385,
+            676,
+            442,
+            718
+          ],
+          "first_frame": 140,
+          "last_frame": 312,
+          "first_seen": "2026-10-29T00:39:51",
+          "last_seen": "2026-10-29T00:39:53",
+          "frames_seen": 87,
+          "snapshot": null
+        },
+        {
+          "event_id": 3,
+          "track_id": 3,
+          "class": "hole",
+          "confidence": 0.94,
+          "bbox": [
+            333,
+            291,
+            395,
+            334
+          ],
+          "first_frame": 260,
+          "last_frame": 548,
+          "first_seen": "2026-10-29T00:39:52",
+          "last_seen": "2026-10-29T00:39:55",
+          "frames_seen": 140,
+          "snapshot": null
+        },
+        {
+          "event_id": 4,
+          "track_id": 5,
+          "class": "stain",
+          "confidence": 0.8267,
+          "bbox": [
+            45,
+            333,
+            107,
+            393
+          ],
+          "first_frame": 490,
+          "last_frame": 644,
+          "first_seen": "2026-10-29T00:39:55",
+          "last_seen": "2026-10-29T00:39:56",
+          "frames_seen": 78,
+          "snapshot": null
+        },
+        {
+          "event_id": 5,
+          "track_id": 6,
+          "class": "stain",
+          "confidence": 0.7667,
+          "bbox": [
+            372,
+            171,
+            417,
+            216
+          ],
+          "first_frame": 612,
+          "last_frame": 694,
+          "first_seen": "2026-10-29T00:39:56",
+          "last_seen": "2026-10-29T00:39:57",
+          "frames_seen": 42,
+          "snapshot": null
+        }
+      ],
+      "output_video": "logs/annotated_random_forest.mp4"
+    },
+    "Support Vector Machine (SVM)": {
+      "stats": {
+        "model_name": "Support Vector Machine (SVM)",
+        "total_frames": 695,
+        "video_duration_sec": 23.17,
+        "video_fps": 30.0,
+        "processing_time_sec": 4.73,
+        "processing_fps": 147.1,
+        "average_ms_per_frame": 6.8,
+        "total_candidate_inferences": 422,
+        "frames_with_defect": 348,
+        "total_unique_defects": 3,
+        "defect_counts": {
+          "broken_thread": 0,
+          "hole": 2,
+          "irregular_yarn": 0,
+          "stain": 1
+        },
+        "output_video_path": "logs/annotated_support_vector_machine_(svm).mp4"
+      },
+      "events_count": 3,
+      "events": [
+        {
+          "event_id": 1,
+          "track_id": 1,
+          "class": "hole",
+          "confidence": 0.9903,
+          "bbox": [
+            151,
+            377,
+            213,
+            432
+          ],
+          "first_frame": 0,
+          "last_frame": 144,
+          "first_seen": "2026-10-29T00:39:57",
+          "last_seen": "2026-10-29T00:39:58",
+          "frames_seen": 73,
+          "snapshot": null
+        },
+        {
+          "event_id": 2,
+          "track_id": 2,
+          "class": "stain",
+          "confidence": 0.9981,
+          "bbox": [
+            129,
+            707,
+            201,
+            773
+          ],
+          "first_frame": 140,
+          "last_frame": 312,
+          "first_seen": "2026-10-29T00:39:58",
+          "last_seen": "2026-10-29T00:39:59",
+          "frames_seen": 87,
+          "snapshot": null
+        },
+        {
+          "event_id": 3,
+          "track_id": 3,
+          "class": "hole",
+          "confidence": 0.9906,
+          "bbox": [
+            88,
+            171,
+            417,
+            387
+          ],
+          "first_frame": 260,
+          "last_frame": 694,
+          "first_seen": "2026-10-29T00:39:58",
+          "last_seen": "2026-10-29T00:40:00",
+          "frames_seen": 260,
+          "snapshot": null
+        }
+      ],
+      "output_video": "logs/annotated_support_vector_machine_(svm).mp4"
+    },
+    "Gradient Boosting (HistGBM)": {
+      "stats": {
+        "model_name": "Gradient Boosting (HistGBM)",
+        "total_frames": 695,
+        "video_duration_sec": 23.17,
+        "video_fps": 30.0,
+        "processing_time_sec": 8.64,
+        "processing_fps": 80.5,
+        "average_ms_per_frame": 12.4,
+        "total_candidate_inferences": 422,
+        "frames_with_defect": 348,
+        "total_unique_defects": 3,
+        "defect_counts": {
+          "broken_thread": 0,
+          "hole": 2,
+          "irregular_yarn": 0,
+          "stain": 1
+        },
+        "output_video_path": "logs/annotated_gradient_boosting_(histgbm).mp4"
+      },
+      "events_count": 3,
+      "events": [
+        {
+          "event_id": 1,
+          "track_id": 1,
+          "class": "hole",
+          "confidence": 1.0,
+          "bbox": [
+            165,
+            376,
+            227,
+            434
+          ],
+          "first_frame": 0,
+          "last_frame": 144,
+          "first_seen": "2026-10-29T00:40:04",
+          "last_seen": "2026-10-29T00:40:05",
+          "frames_seen": 73,
+          "snapshot": null
+        },
+        {
+          "event_id": 2,
+          "track_id": 2,
+          "class": "stain",
+          "confidence": 1.0,
+          "bbox": [
+            87,
+            733,
+            144,
+            771
+          ],
+          "first_frame": 140,
+          "last_frame": 312,
+          "first_seen": "2026-10-29T00:40:05",
+          "last_seen": "2026-10-29T00:40:07",
+          "frames_seen": 87,
+          "snapshot": null
+        },
+        {
+          "event_id": 3,
+          "track_id": 3,
+          "class": "hole",
+          "confidence": 0.9999,
+          "bbox": [
+            283,
+            172,
+            442,
+            372
+          ],
+          "first_frame": 260,
+          "last_frame": 694,
+          "first_seen": "2026-10-29T00:40:06",
+          "last_seen": "2026-10-29T00:40:09",
+          "frames_seen": 260,
+          "snapshot": null
+        }
+      ],
+      "output_video": "logs/annotated_gradient_boosting_(histgbm).mp4"
+    }
+  }
+}

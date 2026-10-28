@@ -7,7 +7,99 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from scipy import stats
-from skimage.feature import graycomatrix, graycoprops, local_binary_pattern
+try:
+    from skimage.feature import graycomatrix, graycoprops, local_binary_pattern
+except ImportError:
+    def graycomatrix(image, distances, angles, levels=16, symmetric=True, normed=True):
+        H, W = image.shape
+        glcm = np.zeros((levels, levels, len(distances), len(angles)), dtype=np.float64)
+        for d_idx, d in enumerate(distances):
+            for a_idx, a in enumerate(angles):
+                dy = int(round(-d * np.sin(a)))
+                dx = int(round(d * np.cos(a)))
+                y_start = max(0, -dy)
+                y_end = min(H, H - dy)
+                x_start = max(0, -dx)
+                x_end = min(W, W - dx)
+                i_vals = image[y_start:y_end, x_start:x_end].ravel()
+                j_vals = image[y_start+dy:y_end+dy, x_start+dx:x_end+dx].ravel()
+                np.add.at(glcm[:, :, d_idx, a_idx], (i_vals, j_vals), 1.0)
+                if symmetric:
+                    np.add.at(glcm[:, :, d_idx, a_idx], (j_vals, i_vals), 1.0)
+                if normed:
+                    s = glcm[:, :, d_idx, a_idx].sum()
+                    if s > 0:
+                        glcm[:, :, d_idx, a_idx] /= s
+        return glcm
+
+    def graycoprops(glcm, prop="contrast"):
+        levels, _, num_d, num_a = glcm.shape
+        out = np.zeros((num_d, num_a), dtype=np.float64)
+        i, j = np.indices((levels, levels))
+        for d in range(num_d):
+            for a in range(num_a):
+                P = glcm[:, :, d, a]
+                if prop == "contrast":
+                    out[d, a] = np.sum((i - j) ** 2 * P)
+                elif prop == "dissimilarity":
+                    out[d, a] = np.sum(np.abs(i - j) * P)
+                elif prop == "homogeneity":
+                    out[d, a] = np.sum(P / (1.0 + (i - j) ** 2))
+                elif prop == "ASM":
+                    out[d, a] = np.sum(P ** 2)
+                elif prop == "energy":
+                    out[d, a] = np.sqrt(np.sum(P ** 2))
+                elif prop == "correlation":
+                    mean_i = np.sum(i * P)
+                    mean_j = np.sum(j * P)
+                    var_i = np.sum((i - mean_i) ** 2 * P)
+                    var_j = np.sum((j - mean_j) ** 2 * P)
+                    std_i = np.sqrt(var_i)
+                    std_j = np.sqrt(var_j)
+                    if std_i * std_j > 1e-12:
+                        out[d, a] = np.sum((i - mean_i) * (j - mean_j) * P) / (std_i * std_j)
+                    else:
+                        out[d, a] = 1.0
+        return out
+
+    def local_binary_pattern(image, P=8, R=1.0, method="uniform"):
+        H, W = image.shape
+        lbp = np.zeros((H, W), dtype=np.int32)
+        angles = 2 * np.pi * np.arange(P) / P
+        dy = -R * np.sin(angles)
+        dx = R * np.cos(angles)
+        
+        # Fast uniform patterns mapping table
+        lut = np.zeros(1 << P, dtype=np.int32)
+        curr_label = 0
+        for i in range(1 << P):
+            bits = [(i >> b) & 1 for b in range(P)]
+            transitions = sum(bits[b] != bits[(b + 1) % P] for b in range(P))
+            if transitions <= 2:
+                lut[i] = curr_label
+                curr_label += 1
+            else:
+                lut[i] = P + 1
+                
+        for b in range(P):
+            ry = int(round(dy[b]))
+            rx = int(round(dx[b]))
+            y_src_start = max(0, ry)
+            y_src_end = min(H, H + ry)
+            x_src_start = max(0, rx)
+            x_src_end = min(W, W + rx)
+            
+            y_dst_start = max(0, -ry)
+            y_dst_end = min(H, H - ry)
+            x_dst_start = max(0, -rx)
+            x_dst_end = min(W, W - rx)
+            
+            shifted = np.copy(image)
+            shifted[y_dst_start:y_dst_end, x_dst_start:x_dst_end] = image[y_src_start:y_src_end, x_src_start:x_src_end]
+            bit_val = (shifted >= image).astype(np.int32)
+            lbp |= (bit_val << b)
+            
+        return lut[lbp]
 
 # Pre-defined classes
 DEFECT_CLASSES = ["broken_thread", "hole", "irregular_yarn", "non_defective", "stain"]

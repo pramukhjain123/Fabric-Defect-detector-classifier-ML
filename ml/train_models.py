@@ -48,11 +48,29 @@ def create_synthetic_fabric_patch(cls_name: str, size: int = 64, seed: int = Non
     cy = int(size // 2 + rng.integers(-8, 9))
 
     if cls_name == "hole":
-        # Missing material: dark core surrounded by frayed yarn disturbance
-        rx = int(rng.integers(size // 8, size // 4))
-        ry = int(rng.integers(size // 8, size // 4))
-        cv2.ellipse(patch, (cx, cy), (rx + 2, ry + 2), int(rng.integers(0, 180)), 0, 360, int(base_gray * 0.4), -1)
-        cv2.ellipse(patch, (cx, cy), (rx, ry), int(rng.integers(0, 180)), 0, 360, int(rng.integers(15, 45)), -1)
+        # Missing material / puncture or tear:
+        hole_type = rng.choice(["puncture_dark", "puncture_backlit", "torn_slit"])
+        rx = int(rng.integers(size // 8, size // 3))
+        ry = int(rng.integers(size // 8, size // 3))
+        angle = int(rng.integers(0, 180))
+
+        if hole_type == "puncture_dark":
+            cv2.ellipse(patch, (cx, cy), (rx + 3, ry + 3), angle, 0, 360, int(base_gray * 0.4), -1)
+            cv2.ellipse(patch, (cx, cy), (rx, ry), angle, 0, 360, int(rng.integers(15, 60)), -1)
+        elif hole_type == "puncture_backlit":
+            # Hole with light showing through (backlit/white table) + dark/blue perimeter yarn distortion
+            cv2.ellipse(patch, (cx, cy), (rx + 4, ry + 4), angle, 0, 360, int(rng.integers(30, 80)), 2)
+            cv2.ellipse(patch, (cx, cy), (rx, ry), angle, 0, 360, int(rng.integers(235, 255)), -1)
+            cv2.ellipse(patch, (cx, cy), (rx + 2, ry + 2), angle, 0, 360, int(rng.integers(40, 100)), 1)
+        else: # torn_slit
+            slit_w = int(rng.integers(size // 3, size - 10))
+            slit_h = int(rng.integers(4, 14))
+            cv2.ellipse(patch, (cx, cy), (slit_w // 2, slit_h // 2), int(rng.integers(-15, 15)), 0, 360, int(rng.integers(30, 75)), -1)
+            # fray threads across the slit
+            for _ in range(rng.integers(2, 5)):
+                tx = int(cx + rng.integers(-slit_w // 3, slit_w // 3))
+                cv2.line(patch, (tx, cy - slit_h // 2), (tx + rng.integers(-4, 5), cy + slit_h // 2), int(rng.integers(180, 240)), 1)
+
 
     elif cls_name == "stain":
         # Smooth photometric contaminant (oil/grease drop)
@@ -175,20 +193,22 @@ def generate_dataset(samples_per_class: int = 250) -> Tuple[np.ndarray, np.ndarr
                     y_list.append(cid)
 
     # 4. Verified real video defect crops
-    cropped_dir = Path("logs/cropped_defects")
-    if cropped_dir.exists():
-        video_crops = [
-            ("defect_0_at_frame0.jpg", "hole"),
-            ("defect_1_at_frame250.jpg", "hole"),
-            ("defect_2_at_frame300.jpg", "hole"),
-            ("defect_3_at_frame550.jpg", "stain"),
-            ("defect_4_at_frame650.jpg", "stain"),
-        ]
-        for f_name, f_cls in video_crops:
-            f_path = cropped_dir / f_name
-            if f_path.exists():
-                im = cv2.imread(str(f_path), cv2.IMREAD_GRAYSCALE)
-                for feat, cid in augment_crop_variants(im, f_cls):
+    real_holes_dir = Path("logs/real_holes")
+    if real_holes_dir.exists():
+        for hp in real_holes_dir.glob("*.jpg"):
+            im = cv2.imread(str(hp), cv2.IMREAD_GRAYSCALE)
+            if im is not None:
+                for feat, cid in augment_crop_variants(im, "hole"):
+                    X_list.append(feat)
+                    y_list.append(cid)
+
+    # 4b. Verified real video stain crops
+    real_stains_dir = Path("logs/real_stains")
+    if real_stains_dir.exists():
+        for sp in real_stains_dir.glob("*.jpg"):
+            im = cv2.imread(str(sp), cv2.IMREAD_GRAYSCALE)
+            if im is not None:
+                for feat, cid in augment_crop_variants(im, "stain"):
                     X_list.append(feat)
                     y_list.append(cid)
 

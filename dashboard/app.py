@@ -9,11 +9,14 @@ from pathlib import Path
 
 import cv2
 import json
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 from dashboard.runtime import get_runtime
 from ml.video_inspector import ClassicalMLVideoInspector, run_comparative_video_study
+from ml.video_trainer import VideoMLTrainer
+from ml.fetch_videos import get_available_videos, fetch_or_create_all_training_videos
 
 # Page Configuration
 st.set_page_config(
@@ -229,8 +232,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─────────────────── Main Tabs ───────────────────────────────────────────────
-tab_video_ml, tab_live, tab_eval, tab_history, tab_sessions = st.tabs([
-    "🎞️ Upload Video (Classical ML Study)",
+tab_video_ml, tab_train_ml, tab_live, tab_eval, tab_history, tab_sessions = st.tabs([
+    "🎞️ Upload Video (ML Inspection)",
+    "🧠 Train ML from Videos",
     "📹 Live Camera & YOLO Pipeline",
     "📊 Model Evaluation & Benchmarks",
     "📸 Defect Snapshots & Event Log",
@@ -353,7 +357,7 @@ with tab_video_ml:
                         "Choose Annotated Model Video to Play:",
                         ["Random Forest", "Support Vector Machine (SVM)", "Gradient Boosting (HistGBM)"]
                     )
-                sel_model_res = comp_res["model_results"].get(vid_model, top_model_res)
+                sel_model_res = comp_res["model_results"].get(vid_model) or list(comp_res["model_results"].values())[0]
                 out_vid = sel_model_res.get("output_video_path")
                 if out_vid and Path(out_vid).exists():
                     try:
@@ -413,7 +417,154 @@ with tab_video_ml:
                 else:
                     st.info("No defects detected above the threshold.")
 
-# ─────────────────── Tab 2: Live Camera & YOLO Pipeline ──────────────────────
+# ─────────────────── Tab 2: Train ML from Videos ─────────────────────────────
+with tab_train_ml:
+    st.markdown("""
+    <div style="background: rgba(22, 27, 34, 0.7); border: 1px solid #30363d; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: #3fb950;">🧠 Video Self-Learning — Classical ML Training from Fabric Videos</h3>
+        <p style="margin: 6px 0 0 0; color: #8b949e; font-size: 14px;">
+            Uses the <strong>YOLO teacher model</strong> to mine confirmed defect patches from uploaded fabric videos,
+            extracts <strong>64 handcrafted features</strong> (GLCM texture, LBP, edge gradients, morphology),
+            and retrains <strong>Random Forest, SVM, and Gradient Boosting</strong> models on real video evidence.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tv_col1, tv_col2 = st.columns([1, 1], gap="large")
+
+    with tv_col1:
+        st.markdown("#### 1. Select Training Video Sources")
+        train_source = st.radio(
+            "Video Sources:",
+            options=[
+                "Auto-detect all available videos (data/videos/)",
+                "Use uploaded WhatsApp / recorded video only",
+                "Generate fresh synthetic industrial weave videos",
+                "Upload a specific training video",
+            ],
+            index=0
+        )
+
+        upload_train_vid = None
+        if train_source == "Upload a specific training video":
+            upload_train_vid = st.file_uploader(
+                "Upload Training Video (.mp4, .avi)", type=["mp4", "avi", "mov", "mkv"], key="train_uploader"
+            )
+            if upload_train_vid:
+                _tmp_dir = Path("logs/uploaded_videos")
+                _tmp_dir.mkdir(parents=True, exist_ok=True)
+                _save_path = str(_tmp_dir / upload_train_vid.name)
+                with open(_save_path, "wb") as _f:
+                    _f.write(upload_train_vid.read())
+                st.success(f"Saved: `{upload_train_vid.name}` ({upload_train_vid.size / 1024 / 1024:.2f} MB)")
+
+    with tv_col2:
+        st.markdown("#### 2. Training Settings")
+        train_conf = st.slider(
+            "YOLO Teacher Confidence (Patch Mining Threshold)",
+            min_value=0.15, max_value=0.70, value=0.25, step=0.05,
+            help="How confident the YOLO teacher model must be before a defect patch is mined for training."
+        )
+        st.info(
+            "**How it works:** YOLO scans each frame → mines defect crops → \n"
+            "extracts GLCM + LBP + gradient features → trains 3 Classical ML models → \n"
+            "saves updated `.joblib` model files."
+        )
+        run_train_btn = st.button(
+            "🚀 Start Video ML Training", use_container_width=True, type="primary", key="run_train"
+        )
+
+    if run_train_btn:
+        # Resolve which video paths to train on
+        if train_source == "Upload a specific training video" and upload_train_vid:
+            _train_paths = [str(Path("logs/uploaded_videos") / upload_train_vid.name)]
+        elif train_source == "Generate fresh synthetic industrial weave videos":
+            with st.spinner("Generating synthetic industrial fabric inspection videos..."):
+                _vids = fetch_or_create_all_training_videos()
+            _train_paths = [v["path"] for v in _vids if "industrial" in v["path"]]
+        elif train_source == "Use uploaded WhatsApp / recorded video only":
+            _up_dir = Path("logs/uploaded_videos")
+            _train_paths = [str(p) for p in _up_dir.glob("*.mp4")] if _up_dir.exists() else []
+        else:
+            _vids = get_available_videos()
+            if not _vids:
+                _vids = fetch_or_create_all_training_videos()
+            _train_paths = [v["path"] for v in _vids]
+
+        if not _train_paths:
+            st.error("No training videos found. Please upload a video or select 'Generate' option.")
+        else:
+            st.markdown("---")
+            st.markdown(f"**Training on {len(_train_paths)} video(s):**")
+            for _tp in _train_paths:
+                st.caption(f"  📹 {Path(_tp).name}")
+
+            _prog_bar = st.progress(0.0)
+            _status_txt = st.empty()
+
+            def _train_progress(pct, msg):
+                _prog_bar.progress(min(1.0, pct))
+                _status_txt.text(msg)
+
+            try:
+                _trainer = VideoMLTrainer(detector_conf=float(train_conf))
+                _results = _trainer.train_models_from_videos(_train_paths, progress_cb=_train_progress)
+                _prog_bar.progress(1.0)
+                _status_txt.success(f"Training complete in {_results['training_duration_s']}s — 3 models updated!")
+
+                # Results Summary
+                st.markdown("---")
+                st.markdown("### 📊 Training Results: 3 Classical ML Models")
+
+                _sum_df = _results["summary_df"]
+                st.dataframe(_sum_df, use_container_width=True, hide_index=True)
+
+                _rc1, _rc2, _rc3 = st.columns(3)
+                _comp = _results["comparison_results"]
+                for _col, _mname in zip([_rc1, _rc2, _rc3], list(_comp.keys())):
+                    _mv = _comp[_mname]
+                    _col.metric(
+                        _mname.split(" (")[0],
+                        f"{_mv['accuracy']*100:.2f}%",
+                        f"F1: {_mv['macro_f1']:.4f}"
+                    )
+
+                # Class distribution
+                st.markdown("#### Dataset Class Distribution (Train + Video Patches)")
+                _dist = _results["class_distribution"]
+                _dist_df = pd.DataFrame({"Class": list(_dist.keys()), "Samples": list(_dist.values())})
+                st.bar_chart(_dist_df.set_index("Class")["Samples"])
+
+                # Mined patch gallery
+                _gallery = _results.get("gallery_samples", [])
+                if _gallery:
+                    st.markdown("#### Mined Defect Patch Gallery (from Videos)")
+                    _g_cols = st.columns(min(8, len(_gallery)))
+                    for _gi, _gr in enumerate(_gallery[:8]):
+                        _gp = _gr.get("patch_path", "")
+                        if _gp and Path(_gp).exists():
+                            _g_cols[_gi % 8].image(
+                                _gp,
+                                caption=f"{_gr['class']} ({_gr['confidence']:.2f})\n@{_gr['timestamp_s']}s",
+                                use_container_width=True
+                            )
+
+                # Audit log
+                _audit_path = Path("logs/video_training_audit.jsonl")
+                if _audit_path.exists():
+                    with open(_audit_path) as _af:
+                        _lines = _af.readlines()
+                    if _lines:
+                        _last = json.loads(_lines[-1])
+                        st.markdown("#### Latest Training Audit Entry")
+                        st.json(_last)
+
+            except Exception as _e:
+                st.error(f"Training failed: {_e}")
+                import traceback
+                st.code(traceback.format_exc())
+
+# ─────────────────── Tab 3: Live Camera & YOLO Pipeline ──────────────────────
 with tab_live:
     # Fragment to auto-refresh live camera feed and alerts smoothly
     @st.fragment(run_every="0.25s")

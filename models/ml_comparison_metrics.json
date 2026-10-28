@@ -4,19 +4,19 @@
     "description": "Ensemble of 120 decision trees with feature sub-sampling",
     "model_path": "models/ml_random_forest.joblib",
     "use_scaled": false,
-    "accuracy": 0.9979,
-    "macro_f1": 0.9979,
-    "precision": 0.9987,
-    "recall": 0.9971,
-    "inference_ms_per_patch": 0.054,
-    "throughput_fps": 18421.1,
-    "training_time_sec": 1.33,
-    "model_size_kb": 1048.9,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "inference_ms_per_patch": 0.012,
+    "throughput_fps": 83464.9,
+    "training_time_sec": 0.57,
+    "model_size_kb": 958.0,
     "per_class_f1": {
       "broken_thread": 1.0,
       "hole": 1.0,
-      "irregular_yarn": 0.9927,
-      "non_defective": 0.9968,
+      "irregular_yarn": 1.0,
+      "non_defective": 1.0,
       "stain": 1.0
     },
     "confusion_matrix": [
@@ -29,7 +29,7 @@
       ],
       [
         0,
-        112,
+        213,
         0,
         0,
         0
@@ -37,15 +37,15 @@
       [
         0,
         0,
-        68,
-        1,
+        40,
+        0,
         0
       ],
       [
         0,
         0,
         0,
-        155,
+        40,
         0
       ],
       [
@@ -53,7 +53,7 @@
         0,
         0,
         0,
-        98
+        127
       ]
     ],
     "classes": [
@@ -69,19 +69,19 @@
     "description": "Radial Basis Function (RBF) kernel margin maximizer",
     "model_path": "models/ml_svm.joblib",
     "use_scaled": true,
-    "accuracy": 0.9979,
-    "macro_f1": 0.9979,
-    "precision": 0.9987,
-    "recall": 0.9971,
-    "inference_ms_per_patch": 0.106,
-    "throughput_fps": 9404.1,
-    "training_time_sec": 0.64,
-    "model_size_kb": 340.8,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "inference_ms_per_patch": 0.025,
+    "throughput_fps": 39531.1,
+    "training_time_sec": 0.18,
+    "model_size_kb": 229.2,
     "per_class_f1": {
       "broken_thread": 1.0,
       "hole": 1.0,
-      "irregular_yarn": 0.9927,
-      "non_defective": 0.9968,
+      "irregular_yarn": 1.0,
+      "non_defective": 1.0,
       "stain": 1.0
     },
     "confusion_matrix": [
@@ -94,7 +94,7 @@
       ],
       [
         0,
-        112,
+        213,
         0,
         0,
         0
@@ -102,15 +102,15 @@
       [
         0,
         0,
-        68,
-        1,
+        40,
+        0,
         0
       ],
       [
         0,
         0,
         0,
-        155,
+        40,
         0
       ],
       [
@@ -118,7 +118,7 @@
         0,
         0,
         0,
-        98
+        127
       ]
     ],
     "classes": [
@@ -134,19 +134,19 @@
     "description": "Histogram-binned gradient-boosted decision trees",
     "model_path": "models/ml_gradient_boosting.joblib",
     "use_scaled": false,
-    "accuracy": 0.9979,
-    "macro_f1": 0.9979,
-    "precision": 0.9987,
-    "recall": 0.9971,
-    "inference_ms_per_patch": 0.086,
-    "throughput_fps": 11667.2,
-    "training_time_sec": 4.76,
-    "model_size_kb": 1410.9,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "inference_ms_per_patch": 0.017,
+    "throughput_fps": 59403.1,
+    "training_time_sec": 2.66,
+    "model_size_kb": 1366.9,
     "per_class_f1": {
       "broken_thread": 1.0,
       "hole": 1.0,
-      "irregular_yarn": 0.9927,
-      "non_defective": 0.9968,
+      "irregular_yarn": 1.0,
+      "non_defective": 1.0,
       "stain": 1.0
     },
     "confusion_matrix": [
@@ -159,7 +159,7 @@
       ],
       [
         0,
-        112,
+        213,
         0,
         0,
         0
@@ -167,15 +167,15 @@
       [
         0,
         0,
-        68,
-        1,
+        40,
+        0,
         0
       ],
       [
         0,
         0,
         0,
-        155,
+        40,
         0
       ],
       [
@@ -183,7 +183,7 @@
         0,
         0,
         0,
-        98
+        127
       ]
     ],
     "classes": [

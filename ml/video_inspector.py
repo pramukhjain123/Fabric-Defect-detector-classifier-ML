@@ -5,6 +5,7 @@ localizes candidate anomalies, extracts 64 handcrafted features, classifies them
 with Classical ML (Random Forest, SVM, or Gradient Boosting), tracks defects across frames,
 and produces annotated video and comparative metrics.
 """
+import math
 import os
 import sys
 import time
@@ -59,6 +60,78 @@ def nms_candidate_boxes(boxes: List[Tuple[int, int, int, int]], iou_thresh: floa
     return kept
 
 
+def merge_nearby_boxes(boxes: List[Tuple[int, int, int, int]], max_dist: int = 45) -> List[Tuple[int, int, int, int]]:
+    """Merges adjacent bounding boxes belonging to the same physical defect (e.g. elongated tears or grouped holes)."""
+    if not boxes:
+        return []
+    rects = [[b[0], b[1], b[0] + b[2], b[1] + b[3]] for b in boxes]
+    merged = True
+    while merged:
+        merged = False
+        new_rects = []
+        skip = set()
+        for i in range(len(rects)):
+            if i in skip:
+                continue
+            r1 = rects[i]
+            for j in range(i + 1, len(rects)):
+                if j in skip:
+                    continue
+                r2 = rects[j]
+                x_dist = max(0, max(r1[0], r2[0]) - min(r1[2], r2[2]))
+                y_dist = max(0, max(r1[1], r2[1]) - min(r1[3], r2[3]))
+                if x_dist <= max_dist and y_dist <= max_dist:
+                    r1 = [min(r1[0], r2[0]), min(r1[1], r2[1]), max(r1[2], r2[2]), max(r1[3], r2[3])]
+                    skip.add(j)
+                    merged = True
+            new_rects.append(r1)
+        rects = new_rects
+    return [(r[0], r[1], r[2] - r[0], r[3] - r[1]) for r in rects]
+
+
+def deduplicate_closed_events(events: List[Dict], max_center_dist: float = 220.0, max_frame_gap: int = 60) -> List[Dict]:
+    """Merges duplicate detections and tracks of the same physical defect across time and camera motion."""
+    if not events:
+        return []
+    sorted_evs = sorted(events, key=lambda e: e["first_frame"])
+    merged_evs = []
+
+    for ev in sorted_evs:
+        matched = False
+        bx1, by1, bx2, by2 = ev["bbox"]
+        cx1, cy1 = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
+
+        for m in merged_evs:
+            mbx1, mby1, mbx2, mby2 = m["bbox"]
+            mcx1, mcy1 = (mbx1 + mbx2) / 2.0, (mby1 + mby2) / 2.0
+            dist = math.hypot(cx1 - mcx1, cy1 - mcy1)
+
+            time_close = (ev["first_frame"] <= m["last_frame"] + max_frame_gap) and (m["first_frame"] <= ev["last_frame"] + max_frame_gap)
+            spatial_close = dist <= max_center_dist
+
+            if spatial_close and time_close:
+                m["first_frame"] = min(m["first_frame"], ev["first_frame"])
+                m["last_frame"] = max(m["last_frame"], ev["last_frame"])
+                m["frames_seen"] = m.get("frames_seen", 1) + ev.get("frames_seen", 1)
+                # Keep highest confidence prediction and prioritize hole if detected
+                if ev.get("class") == "hole" or (ev.get("confidence", 0.0) > m.get("confidence", 0.0) and m.get("class") != "hole"):
+                    m["confidence"] = ev.get("confidence", m.get("confidence"))
+                    m["class"] = ev.get("class", m.get("class"))
+                m["bbox"] = [
+                    min(mbx1, bx1), min(mby1, by1),
+                    max(mbx2, bx2), max(mby2, by2)
+                ]
+                matched = True
+                break
+
+        if not matched:
+            merged_evs.append(dict(ev))
+
+    for idx, me in enumerate(merged_evs, 1):
+        me["event_id"] = idx
+    return merged_evs
+
+
 class ClassicalMLVideoInspector:
     def __init__(self, model_name: str = "Random Forest"):
         self.model_name = model_name
@@ -111,28 +184,31 @@ class ClassicalMLVideoInspector:
 
         contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         candidates = []
-        border_y = 35
-        border_x = 18
+        border_top = max(50, int(h * 0.07))
+        border_bottom = max(80, int(h * 0.10))
+        border_x = max(45, int(w * 0.10))
 
         for c in contours:
             area = cv2.contourArea(c)
             if min_area <= area <= max_area:
                 x, y, bw, bh = cv2.boundingRect(c)
-                # Ignore edge artifacts / camera vignettes near boundaries
-                if y < border_y or (y + bh) > (h - border_y) or x < border_x or (x + bw) > (w - border_x):
+                # Ignore edge artifacts / table borders / raw cloth boundary fringes
+                if y < border_top or (y + bh) > (h - border_bottom) or x < border_x or (x + bw) > (w - border_x):
                     continue
 
                 # Expand box slightly to include weave context
-                pad = 10
+                pad = 12
                 x1 = max(0, x - pad)
                 y1 = max(0, y - pad)
                 x2 = min(w, x + bw + pad)
                 y2 = min(h, y + bh + pad)
                 candidates.append((x1, y1, x2 - x1, y2 - y1))
 
+        # Merge adjacent disjoint contours belonging to the same tear/defect
+        merged = merge_nearby_boxes(candidates, max_dist=45)
         # Suppress overlapping candidate boxes
-        deduped = nms_candidate_boxes(candidates, iou_thresh=0.25)
-        return deduped[:8]
+        deduped = nms_candidate_boxes(merged, iou_thresh=0.20)
+        return deduped[:6]
 
     def inspect_video(
         self,
@@ -178,9 +254,9 @@ class ClassicalMLVideoInspector:
             min_confidence=conf_threshold * 0.85,
             confirm_confidence=conf_threshold,
             confirm_frames=3,
-            max_missed=16,
+            max_missed=60,
             iou_threshold=0.15,
-            max_center_dist=0.15
+            max_center_dist=0.25
         )
 
         frame_idx = 0
@@ -315,12 +391,15 @@ class ClassicalMLVideoInspector:
         remaining_closed = tracker.flush()
         all_closed_events.extend(remaining_closed)
 
+        # Spatio-temporal event deduplication: merge duplicate frame tracks of the same physical defect
+        final_events = deduplicate_closed_events(all_closed_events)
+
         total_time = time.perf_counter() - t_start
         fps = frame_idx / max(0.001, total_time)
 
         # Build events DataFrame
         event_rows = []
-        for ev in all_closed_events:
+        for ev in final_events:
             ev_id = ev["event_id"]
             first_f = ev["first_frame"]
             last_f = ev["last_frame"]
@@ -342,7 +421,7 @@ class ClassicalMLVideoInspector:
         )
 
         class_counts = {cls: 0 for cls in DEFECT_CLASSES if cls != "non_defective"}
-        for ev in all_closed_events:
+        for ev in final_events:
             if ev["class"] in class_counts:
                 class_counts[ev["class"]] += 1
 
@@ -356,14 +435,14 @@ class ClassicalMLVideoInspector:
             "average_ms_per_frame": round((total_time / max(1, frame_idx)) * 1000.0, 1),
             "total_candidate_inferences": total_inferences,
             "frames_with_defect": frames_with_defect,
-            "total_unique_defects": len(all_closed_events),
+            "total_unique_defects": len(final_events),
             "defect_counts": class_counts,
             "output_video_path": str(output_video_path) if output_video_path else None
         }
 
         return {
             "events_df": events_df,
-            "events": all_closed_events,
+            "events": final_events,
             "stats": stats,
             "output_video_path": output_video_path
         }
