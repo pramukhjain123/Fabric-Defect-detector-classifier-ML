@@ -121,7 +121,12 @@ def extract_patch_features(patch: np.ndarray) -> np.ndarray:
 
     # Standardize to 64x64 grayscale uint8
     if len(patch.shape) == 3:
-        gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+        if patch.shape[2] == 4:
+            gray = cv2.cvtColor(patch, cv2.COLOR_BGRA2GRAY)
+        elif patch.shape[2] == 3:
+            gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = patch[:, :, 0]
     else:
         gray = patch
 
@@ -135,8 +140,12 @@ def extract_patch_features(patch: np.ndarray) -> np.ndarray:
     std_val = float(np.std(gray)) + 1e-6
     p10, p50, p90 = np.percentile(gray, [10, 50, 90])
     iqr = float(p90 - p10)
-    skewness = float(stats.skew(gray.ravel()))
-    kurt = float(stats.kurtosis(gray.ravel()))
+    if std_val < 1e-3:
+        skewness = 0.0
+        kurt = 0.0
+    else:
+        skewness = float(stats.skew(gray.ravel()))
+        kurt = float(stats.kurtosis(gray.ravel()))
 
     feats.extend([mean_val, std_val, float(p10), float(p50), float(p90), iqr, skewness, kurt])
 

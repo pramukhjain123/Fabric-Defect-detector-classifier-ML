@@ -7,6 +7,8 @@ and produces annotated video and comparative metrics.
 """
 import math
 import os
+import shutil
+import subprocess
 import sys
 import time
 import warnings
@@ -15,6 +17,13 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# Compatibility shim for scikit-learn CyHalfMultinomialLoss across versions
+try:
+    import sklearn._loss._loss
+    sys.modules["_loss"] = sklearn._loss._loss
+except Exception:
+    pass
 
 import cv2
 import joblib
@@ -25,6 +34,54 @@ from ml.features import extract_patch_features, DEFECT_CLASSES, ID_TO_CLASS, CLA
 from vision.postprocessing import CLASS_COLORS, color_for
 from vision.preprocessing import correct_lighting
 from vision.tracker import DefectEventTracker
+
+
+def ensure_h264_compatible(video_path: str) -> str:
+    """Ensure video file is encoded with H.264 (libx264) and yuv420p for HTML5 browser compatibility.
+    
+    If encoded in mp4v or another non-browser format, transcodes it using ffmpeg in-place.
+    """
+    vpath = Path(video_path)
+    if not vpath.exists() or vpath.stat().st_size == 0:
+        return str(video_path)
+    
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    
+    # Check current codec via ffprobe
+    is_h264 = False
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", str(vpath)],
+            capture_output=True, text=True, timeout=5
+        )
+        if probe.returncode == 0 and probe.stdout.strip().lower() in ("h264", "avc1"):
+            is_h264 = True
+    except Exception:
+        pass
+
+    if is_h264:
+        return str(video_path)
+
+    # Transcode to H.264
+    tmp_path = vpath.with_name(f"{vpath.stem}_transcoded_{int(time.time())}.mp4")
+    try:
+        cmd = [
+            ffmpeg_bin, "-y", "-i", str(vpath),
+            "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart", "-crf", "23", "-preset", "veryfast",
+            str(tmp_path)
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if res.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+            shutil.move(str(tmp_path), str(vpath))
+    except Exception as e:
+        print(f"[video_inspector] Transcode notice for {video_path}: {e}")
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    return str(video_path)
 
 
 MODEL_PATHS = {
@@ -215,6 +272,7 @@ class ClassicalMLVideoInspector:
         video_path: str,
         output_video_path: Optional[str] = None,
         conf_threshold: float = 0.50,
+        lighting: str = "clahe",
         snapshot_dir: str = "logs/ml_video_snapshots",
         progress_cb: Optional[Callable[[float, str], None]] = None
     ) -> Dict:
@@ -278,13 +336,24 @@ class ClassicalMLVideoInspector:
                 frame_idx += 1
                 continue
 
-            # 1. Preprocessing & candidate localization
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            candidates = self.detect_candidate_regions(gray)
+            # 1. Grayscale conversion & contrast normalization (invariant to fabric color and dyes)
+            if len(frame.shape) == 3 and frame.shape[2] >= 3:
+                gray = cv2.cvtColor(frame[:, :, :3], cv2.COLOR_BGR2GRAY)
+            elif len(frame.shape) == 3:
+                gray = frame[:, :, 0]
+            else:
+                gray = frame.copy()
+
+            if lighting and lighting != "none":
+                gray_proc = correct_lighting(gray, method=lighting, to_gray=False)
+            else:
+                gray_proc = gray
+
+            candidates = self.detect_candidate_regions(gray_proc)
 
             raw_detections = []
             if candidates:
-                patches = [gray[cy:cy + ch, cx:cx + cw] for (cx, cy, cw, ch) in candidates]
+                patches = [gray_proc[cy:cy + ch, cx:cx + cw] for (cx, cy, cw, ch) in candidates]
                 feats_list = [extract_patch_features(p) for p in patches]
                 feats_batch = np.array(feats_list, dtype=np.float32)
                 if self.use_scaled and self.scaler is not None:
@@ -362,30 +431,39 @@ class ClassicalMLVideoInspector:
         cap.release()
         if writer:
             writer.release()
+            del writer
             writer = None
-            time.sleep(0.2)
+            import gc
+            gc.collect()
+            time.sleep(0.3)
             # Transcode raw output video to HTML5 browser-compatible H.264
             if output_video_path and raw_video_path and Path(raw_video_path).exists():
                 try:
-                    import subprocess
+                    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
                     ffmpeg_cmd = [
-                        "ffmpeg", "-y", "-i", raw_video_path,
+                        ffmpeg_bin, "-y", "-i", str(raw_video_path),
                         "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart",
                         "-crf", "23", "-preset", "veryfast",
                         str(output_video_path)
                     ]
-                    proc = subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    if proc.returncode != 0 or not Path(output_video_path).exists():
-                        import shutil
+                    proc = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=180)
+                    if proc.returncode == 0 and Path(output_video_path).exists() and Path(output_video_path).stat().st_size > 0:
+                        try:
+                            time.sleep(0.1)
+                            Path(raw_video_path).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    else:
+                        print(f"[video_inspector] Warning: ffmpeg returned {proc.returncode}: {proc.stderr[:200]}")
                         shutil.copy2(raw_video_path, output_video_path)
-                    try:
-                        time.sleep(0.1)
-                        Path(raw_video_path).unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                except Exception:
-                    import shutil
+                        ensure_h264_compatible(str(output_video_path))
+                except Exception as e:
+                    print(f"[video_inspector] Transcode error: {e}")
                     shutil.copy2(raw_video_path, output_video_path)
+                    ensure_h264_compatible(str(output_video_path))
+            elif output_video_path and Path(output_video_path).exists():
+                ensure_h264_compatible(str(output_video_path))
 
         # Flush any remaining open tracks
         remaining_closed = tracker.flush()
@@ -451,6 +529,7 @@ class ClassicalMLVideoInspector:
 def run_comparative_video_study(
     video_path: str,
     conf_threshold: float = 0.50,
+    lighting: str = "clahe",
     progress_cb: Optional[Callable[[float, str], None]] = None
 ) -> Dict:
     """Run the uploaded video through ALL 3 Classical ML models and return comparative study results."""
@@ -467,7 +546,8 @@ def run_comparative_video_study(
         res = inspector.inspect_video(
             video_path=video_path,
             output_video_path=out_vid,
-            conf_threshold=conf_threshold
+            conf_threshold=conf_threshold,
+            lighting=lighting
         )
         study_results[m_name] = res
         s = res["stats"]

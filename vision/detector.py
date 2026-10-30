@@ -64,12 +64,19 @@ class FabricDetector:
             self.detect(dummy)
 
     def _prep(self, frame):
+        if frame is None or getattr(frame, "size", 0) == 0:
+            return frame
         if self.lighting_method:
             from .preprocessing import correct_lighting
             return correct_lighting(frame, method=self.lighting_method, to_gray=self.to_gray)
         if not self.to_gray:
             return frame
-        g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if len(frame.shape) == 3 and frame.shape[2] >= 3:
+            g = cv2.cvtColor(frame[:, :, :3], cv2.COLOR_BGR2GRAY)
+        elif len(frame.shape) == 3:
+            g = frame[:, :, 0]
+        else:
+            g = frame
         return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
 
     def detect(self, frame):

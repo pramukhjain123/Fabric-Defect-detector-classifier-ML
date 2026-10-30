@@ -136,14 +136,21 @@ class DashboardRuntime:
                     max_center_dist=tr_cfg.get("max_center_dist", 0.20)
                 )
 
-                # 4. Assemble Pipeline
+                # 4. Assemble Pipeline with greyscale & lighting preprocessing
+                prep_cfg = copy.deepcopy(self.cfg.get("preprocessing", {}))
+                if lighting and lighting != "none":
+                    prep_cfg["lighting_correction"] = True
+                    prep_cfg["method"] = lighting
+                    prep_cfg["to_gray"] = True
+
                 self.pipeline = InspectionPipeline(
                     camera=camera,
                     detector=detector,
                     tracker=tracker,
                     on_event=self._on_event_confirmed,
                     on_event_closed=self._on_event_closed,
-                    draw=True
+                    draw=True,
+                    preprocessing=prep_cfg
                 )
                 self.pipeline.start()
             except Exception as e:
