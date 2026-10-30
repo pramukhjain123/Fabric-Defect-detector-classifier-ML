@@ -1,10 +1,12 @@
+streamlit
 ultralytics>=8.4
+opencv-python
 pillow
 numpy
 scipy
-opencv-python
 pandas
-pyyaml
-streamlit
-psutil
+scikit-learn
 scikit-image
+joblib
+pyyaml
+psutil
