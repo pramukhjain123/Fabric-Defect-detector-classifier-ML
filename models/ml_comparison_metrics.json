@@ -1,197 +1,98 @@
 {
   "Random Forest": {
-    "name": "Random Forest",
-    "description": "Ensemble of 120 decision trees with feature sub-sampling",
-    "model_path": "models/ml_random_forest.joblib",
-    "use_scaled": false,
-    "accuracy": 1.0,
-    "macro_f1": 1.0,
-    "precision": 1.0,
-    "recall": 1.0,
-    "inference_ms_per_patch": 0.012,
-    "throughput_fps": 83464.9,
-    "training_time_sec": 0.57,
-    "model_size_kb": 958.0,
-    "per_class_f1": {
-      "broken_thread": 1.0,
-      "hole": 1.0,
-      "irregular_yarn": 1.0,
-      "non_defective": 1.0,
-      "stain": 1.0
-    },
-    "confusion_matrix": [
-      [
-        40,
-        0,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        213,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        40,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        40,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        0,
-        127
-      ]
-    ],
-    "classes": [
-      "broken_thread",
-      "hole",
-      "irregular_yarn",
-      "non_defective",
-      "stain"
-    ]
+    "accuracy": 0.9727564102564102,
+    "macro_f1": 0.9610631064974416,
+    "training_time_s": 0.32,
+    "per_class": {
+      "broken_thread": {
+        "precision": 0.9523809523809523,
+        "recall": 1.0,
+        "f1": 0.975609756097561
+      },
+      "hole": {
+        "precision": 0.9649122807017544,
+        "recall": 0.9166666666666666,
+        "f1": 0.9401709401709402
+      },
+      "irregular_yarn": {
+        "precision": 0.90625,
+        "recall": 0.9666666666666667,
+        "f1": 0.9354838709677419
+      },
+      "non_defective": {
+        "precision": 0.984251968503937,
+        "recall": 0.946969696969697,
+        "f1": 0.9652509652509652
+      },
+      "stain": {
+        "precision": 0.987220447284345,
+        "recall": 0.9903846153846154,
+        "f1": 0.9888
+      }
+    }
   },
   "Support Vector Machine (SVM)": {
-    "name": "Support Vector Machine (SVM)",
-    "description": "Radial Basis Function (RBF) kernel margin maximizer",
-    "model_path": "models/ml_svm.joblib",
-    "use_scaled": true,
-    "accuracy": 1.0,
-    "macro_f1": 1.0,
-    "precision": 1.0,
-    "recall": 1.0,
-    "inference_ms_per_patch": 0.025,
-    "throughput_fps": 39531.1,
-    "training_time_sec": 0.18,
-    "model_size_kb": 229.2,
-    "per_class_f1": {
-      "broken_thread": 1.0,
-      "hole": 1.0,
-      "irregular_yarn": 1.0,
-      "non_defective": 1.0,
-      "stain": 1.0
-    },
-    "confusion_matrix": [
-      [
-        40,
-        0,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        213,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        40,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        40,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        0,
-        127
-      ]
-    ],
-    "classes": [
-      "broken_thread",
-      "hole",
-      "irregular_yarn",
-      "non_defective",
-      "stain"
-    ]
+    "accuracy": 0.9102564102564102,
+    "macro_f1": 0.8741190169670043,
+    "training_time_s": 1.13,
+    "per_class": {
+      "broken_thread": {
+        "precision": 0.8955223880597015,
+        "recall": 1.0,
+        "f1": 0.9448818897637795
+      },
+      "hole": {
+        "precision": 0.8867924528301887,
+        "recall": 0.7833333333333333,
+        "f1": 0.831858407079646
+      },
+      "irregular_yarn": {
+        "precision": 0.6170212765957447,
+        "recall": 0.9666666666666667,
+        "f1": 0.7532467532467533
+      },
+      "non_defective": {
+        "precision": 0.9629629629629629,
+        "recall": 0.7878787878787878,
+        "f1": 0.8666666666666667
+      },
+      "stain": {
+        "precision": 0.9900662251655629,
+        "recall": 0.9583333333333334,
+        "f1": 0.9739413680781759
+      }
+    }
   },
   "Gradient Boosting (HistGBM)": {
-    "name": "Gradient Boosting (HistGBM)",
-    "description": "Histogram-binned gradient-boosted decision trees",
-    "model_path": "models/ml_gradient_boosting.joblib",
-    "use_scaled": false,
-    "accuracy": 1.0,
-    "macro_f1": 1.0,
-    "precision": 1.0,
-    "recall": 1.0,
-    "inference_ms_per_patch": 0.017,
-    "throughput_fps": 59403.1,
-    "training_time_sec": 2.66,
-    "model_size_kb": 1366.9,
-    "per_class_f1": {
-      "broken_thread": 1.0,
-      "hole": 1.0,
-      "irregular_yarn": 1.0,
-      "non_defective": 1.0,
-      "stain": 1.0
-    },
-    "confusion_matrix": [
-      [
-        40,
-        0,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        213,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        40,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        40,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        0,
-        127
-      ]
-    ],
-    "classes": [
-      "broken_thread",
-      "hole",
-      "irregular_yarn",
-      "non_defective",
-      "stain"
-    ]
+    "accuracy": 0.9807692307692307,
+    "macro_f1": 0.9697915142076573,
+    "training_time_s": 3.84,
+    "per_class": {
+      "broken_thread": {
+        "precision": 0.9523809523809523,
+        "recall": 1.0,
+        "f1": 0.975609756097561
+      },
+      "hole": {
+        "precision": 1.0,
+        "recall": 0.9166666666666666,
+        "f1": 0.9565217391304348
+      },
+      "irregular_yarn": {
+        "precision": 0.8955223880597015,
+        "recall": 1.0,
+        "f1": 0.9448818897637795
+      },
+      "non_defective": {
+        "precision": 1.0,
+        "recall": 0.9545454545454546,
+        "f1": 0.9767441860465116
+      },
+      "stain": {
+        "precision": 0.9936102236421726,
+        "recall": 0.9967948717948718,
+        "f1": 0.9952
+      }
+    }
   }
 }

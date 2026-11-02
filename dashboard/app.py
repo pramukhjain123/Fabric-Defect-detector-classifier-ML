@@ -399,15 +399,26 @@ with tab_video_ml:
                     m_data = json.load(mf)
                 b_rows = []
                 for m_k, m_v in m_data.items():
-                    b_rows.append({
+                    row = {
                         "Model": m_k,
                         "Accuracy": f"{m_v['accuracy']*100:.2f}%",
                         "Macro F1": f"{m_v['macro_f1']:.4f}",
-                        "Precision": f"{m_v['precision']:.4f}",
-                        "Recall": f"{m_v['recall']:.4f}",
-                        "Latency (ms/patch)": f"{m_v['inference_ms_per_patch']:.3f} ms",
-                        "Model Size": f"{m_v['model_size_kb']:.1f} KB"
-                    })
+                    }
+                    # Compute macro-averaged precision & recall from per-class data
+                    if "per_class" in m_v and m_v["per_class"]:
+                        classes = m_v["per_class"]
+                        macro_prec = sum(c["precision"] for c in classes.values()) / len(classes)
+                        macro_rec = sum(c["recall"] for c in classes.values()) / len(classes)
+                        row["Precision"] = f"{macro_prec:.4f}"
+                        row["Recall"] = f"{macro_rec:.4f}"
+                    # Optional fields (present if computed during training)
+                    if "inference_ms_per_patch" in m_v:
+                        row["Latency (ms/patch)"] = f"{m_v['inference_ms_per_patch']:.3f} ms"
+                    if "model_size_kb" in m_v:
+                        row["Model Size"] = f"{m_v['model_size_kb']:.1f} KB"
+                    if "training_time_s" in m_v:
+                        row["Train Time"] = f"{m_v['training_time_s']:.2f}s"
+                    b_rows.append(row)
                 st.dataframe(pd.DataFrame(b_rows), use_container_width=True, hide_index=True)
 
             # Video playback with model selector

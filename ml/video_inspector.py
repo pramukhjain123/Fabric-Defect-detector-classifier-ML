@@ -36,6 +36,19 @@ from vision.preprocessing import correct_lighting
 from vision.tracker import DefectEventTracker
 
 
+def get_ffmpeg_binary() -> str:
+    """Find system ffmpeg or fallback to imageio_ffmpeg bundled binary."""
+    bin_path = shutil.which("ffmpeg")
+    if bin_path:
+        return bin_path
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+    return "ffmpeg"
+
+
 def ensure_h264_compatible(video_path: str) -> str:
     """Ensure video file is encoded with H.264 (libx264) and yuv420p for HTML5 browser compatibility.
     
@@ -45,16 +58,17 @@ def ensure_h264_compatible(video_path: str) -> str:
     if not vpath.exists() or vpath.stat().st_size == 0:
         return str(video_path)
     
-    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    ffmpeg_bin = get_ffmpeg_binary()
     
-    # Check current codec via ffprobe
+    # Check current codec via ffmpeg banner or ffprobe
     is_h264 = False
     try:
         probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", str(vpath)],
-            capture_output=True, text=True, timeout=5
+            [ffmpeg_bin, "-i", str(vpath)],
+            capture_output=True, text=True, timeout=10
         )
-        if probe.returncode == 0 and probe.stdout.strip().lower() in ("h264", "avc1"):
+        output_text = (probe.stdout + probe.stderr).lower()
+        if "video: h264" in output_text or "video: avc1" in output_text:
             is_h264 = True
     except Exception:
         pass
@@ -63,15 +77,16 @@ def ensure_h264_compatible(video_path: str) -> str:
         return str(video_path)
 
     # Transcode to H.264
-    tmp_path = vpath.with_name(f"{vpath.stem}_transcoded_{int(time.time())}.mp4")
+    tmp_path = vpath.with_name(f"{vpath.stem}_transcoded_{int(time.time() * 1000)}.mp4")
     try:
         cmd = [
             ffmpeg_bin, "-y", "-i", str(vpath),
             "-vcodec", "libx264", "-pix_fmt", "yuv420p",
             "-movflags", "+faststart", "-crf", "23", "-preset", "veryfast",
+                        "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
             str(tmp_path)
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if res.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
             shutil.move(str(tmp_path), str(vpath))
     except Exception as e:
@@ -219,41 +234,44 @@ class ClassicalMLVideoInspector:
         class_name = ID_TO_CLASS.get(top_id, "non_defective")
         return class_name, conf
 
-    def detect_candidate_regions(self, gray_frame: np.ndarray, min_area: int = 100, max_area: int = 30000) -> List[Tuple[int, int, int, int]]:
-        """Find candidate defect bounding boxes using adaptive thresholding and texture deviation.
-        
-        Applies border margins to eliminate edge vignette noise and NMS to deduplicate boxes.
-        """
+    def detect_candidate_regions(
+        self,
+        gray_frame: np.ndarray,
+        color_frame: Optional[np.ndarray] = None,
+        min_area: int = 80,
+        max_area: int = 40000
+    ) -> List[Tuple[int, int, int, int]]:
+        """Find candidate defect bounding boxes using multi-scale morphological residual and chroma deviation."""
         h, w = gray_frame.shape[:2]
-        # Illumination subtraction: smooth background estimate
-        bg = cv2.GaussianBlur(gray_frame, (31, 31), 0)
-        diff = cv2.absdiff(gray_frame, bg)
+        k_size = max(25, min(h, w) // 16)
+        if k_size % 2 == 0:
+            k_size += 1
+        struct = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
+        diff = cv2.max(
+            cv2.morphologyEx(gray_frame, cv2.MORPH_BLACKHAT, struct),
+            cv2.morphologyEx(gray_frame, cv2.MORPH_TOPHAT, struct)
+        )
+        if color_frame is not None and len(color_frame.shape) == 3 and color_frame.shape[2] == 3:
+            b, g, r = cv2.split(color_frame.astype(np.float32))
+            chroma = (np.std([b, g, r], axis=0) * 1.8).clip(0, 255).astype(np.uint8)
+            anomaly_map = cv2.addWeighted(diff, 0.6, chroma, 0.4, 0)
+        else:
+            anomaly_map = diff
 
-        # Adaptive thresholding
-        mean_d, std_d = cv2.meanStdDev(diff)
-        thresh_val = int(mean_d[0][0] + 1.8 * std_d[0][0] + 12)
-        _, binary = cv2.threshold(diff, thresh_val, 255, cv2.THRESH_BINARY)
-
-        # Morphological clean up
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-        cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, kernel)
-
-        contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        th_val = int(max(20, np.percentile(anomaly_map, 98.2)))
+        _, b_mask = cv2.threshold(anomaly_map, th_val, 255, cv2.THRESH_BINARY)
+        b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+        cnts, _ = cv2.findContours(b_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        border_y = max(30, int(h * 0.05))
+        border_x = max(30, int(w * 0.05))
         candidates = []
-        border_top = max(50, int(h * 0.07))
-        border_bottom = max(80, int(h * 0.10))
-        border_x = max(45, int(w * 0.10))
-
-        for c in contours:
+        for c in cnts:
             area = cv2.contourArea(c)
             if min_area <= area <= max_area:
                 x, y, bw, bh = cv2.boundingRect(c)
-                # Ignore edge artifacts / table borders / raw cloth boundary fringes
-                if y < border_top or (y + bh) > (h - border_bottom) or x < border_x or (x + bw) > (w - border_x):
+                if y < border_y or (y + bh) > (h - border_y) or x < border_x or (x + bw) > (w - border_x):
                     continue
-
-                # Expand box slightly to include weave context
                 pad = 12
                 x1 = max(0, x - pad)
                 y1 = max(0, y - pad)
@@ -261,9 +279,7 @@ class ClassicalMLVideoInspector:
                 y2 = min(h, y + bh + pad)
                 candidates.append((x1, y1, x2 - x1, y2 - y1))
 
-        # Merge adjacent disjoint contours belonging to the same tear/defect
-        merged = merge_nearby_boxes(candidates, max_dist=45)
-        # Suppress overlapping candidate boxes
+        merged = merge_nearby_boxes(candidates, max_dist=40)
         deduped = nms_candidate_boxes(merged, iou_thresh=0.20)
         return deduped[:6]
 
@@ -349,7 +365,7 @@ class ClassicalMLVideoInspector:
             else:
                 gray_proc = gray
 
-            candidates = self.detect_candidate_regions(gray_proc)
+            candidates = self.detect_candidate_regions(gray_proc, color_frame=frame)
 
             raw_detections = []
             if candidates:
@@ -439,12 +455,13 @@ class ClassicalMLVideoInspector:
             # Transcode raw output video to HTML5 browser-compatible H.264
             if output_video_path and raw_video_path and Path(raw_video_path).exists():
                 try:
-                    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+                    ffmpeg_bin = get_ffmpeg_binary()
                     ffmpeg_cmd = [
                         ffmpeg_bin, "-y", "-i", str(raw_video_path),
                         "-vcodec", "libx264", "-pix_fmt", "yuv420p",
                         "-movflags", "+faststart",
                         "-crf", "23", "-preset", "veryfast",
+                        "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                         str(output_video_path)
                     ]
                     proc = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=180)
